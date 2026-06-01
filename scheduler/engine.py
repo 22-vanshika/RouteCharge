@@ -1,6 +1,6 @@
 from typing import Dict, List, Set
 
-from scheduler.models import Bus, BusSchedule, ChargingStop, Scenario, ScenarioSchedule
+from scheduler.models import Bus, BusSchedule, ChargingStop, Direction, Scenario, ScenarioSchedule, SchedulingContext
 from scheduler.utils import cumulative_km_to, travel_minutes
 from scheduler.planner import plan_charging_stops
 from scheduler.resolver import resolve_station
@@ -73,8 +73,7 @@ def _build_partial_context(
     ]
 
 
-def _build_scheduling_context(scenario: Scenario) -> 'SchedulingContext':
-    from scheduler.models import Direction, SchedulingContext
+def _build_scheduling_context(scenario: Scenario) -> SchedulingContext:
     bus_by_id = {b.id: b for b in scenario.buses}
     op_by_bus = {b.id: b.operator.name for b in scenario.buses}
     station_distances = {}

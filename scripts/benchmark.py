@@ -60,6 +60,7 @@ def format_memory(bytes_val):
     return f"{bytes_val} B"
 
 def run_benchmark():
+    random.seed(42)
     # Peak memory usage on macOS is reported in bytes, on Linux in kilobytes
     is_macos = sys.platform == "darwin"
     

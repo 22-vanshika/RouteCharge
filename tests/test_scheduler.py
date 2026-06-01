@@ -84,6 +84,22 @@ class TestBFSPlanner(unittest.TestCase):
         stops_planned = plan_charging_stops(scenario, bus)
         self.assertEqual(stops_planned, ["C", "A"])
 
+    def test_bus_with_no_required_charging_stops(self):
+        pc = PhysicalConstants(battery_range_km=240.0, speed_kmh=60.0, charge_time_minutes=25)
+        # Route: 0 -> A(100km) -> 200km total. Since range is 240km, bus can go from origin to destination without stopping!
+        stops = [
+            RouteStop("bengaluru", 0.0),
+            RouteStop("A", 100.0),
+            RouteStop("kochi", 100.0)
+        ]
+        stations = [Station("A", "Station A", 1)]
+        bus = Bus("bus-1", Operator("kpn"), Direction.BENGALURU_TO_KOCHI, 1140)
+        scenario = Scenario("test", "test", "test", Route(stops), pc, get_test_weights(), [bus], stations)
+        
+        # Expected: BFS should return an empty list because no charging stops are required to reach the destination
+        stops_planned = plan_charging_stops(scenario, bus)
+        self.assertEqual(stops_planned, [])
+
 class TestValidator(unittest.TestCase):
     def test_unregistered_station_in_route(self):
         pc = PhysicalConstants(battery_range_km=240.0, speed_kmh=60.0, charge_time_minutes=25)
