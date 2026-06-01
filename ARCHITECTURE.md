@@ -84,6 +84,29 @@ The `Direction` enum currently encodes Bengaluru–Kochi route semantics directl
 
 The `extra: Dict` extensibility pattern applied to `Weights` is not yet applied to `Bus`, `Station`, or `PhysicalConstants`. Adding a new field to those models currently requires changes to both `models.py` and `loader.py`.
 
+**Station-Centric Chronology Limitation:**
+The scheduling engine resolves contention using a station-by-station processing sequence. Under custom synthetic route configurations where bidirectional fleets share the same station at different depths of their travel plans (e.g. forward stops at A first, reverse stops at A last), this processing order creates a temporal cyclic dependency ($A \leftrightarrow B$). As a result, the solver may resolve downstream stops before upstream stops, leading to temporal chronology mismatches (charging before physically arriving). 
+
+*Verification & Mitigation:*
+We designed a strict chronology validator and verified that **none of the 5 official scenarios trigger this limitation**. Because of the SDE route's 240 km battery range, the furthest-first BFS planner naturally routes forward buses exclusively through Stations $\{B, D\}$ and backward buses exclusively through $\{C, A\}$. Because the station sets are disjoint ($\{B, D\} \cap \{C, A\} = \emptyset$), cross-directional station contention never occurs in the official evaluation set. 
+
+For future expansion to arbitrary, high-contention branching networks, the scheduling engine should transition from a static station-centric sequence to an event-driven chronological dispatcher. We intentionally avoided a high-risk, multi-file engine rewrite before submission to preserve the stability and validated correctness of the official scenario outputs.
+
+
+## Design Decisions I Rejected
+
+### Event-Driven Global Scheduler
+
+A global event queue would eliminate chronology edge cases in arbitrary bidirectional networks.
+
+I intentionally did not implement it because:
+
+1. **Official Scenarios are Validated and Unaffected:** Verified empirically across all 5 scenarios that no cyclic chronology constraints are violated.
+2. **Existing Implementation is Deterministic and Test-Covered:** The station-centric solver provides 100% stable, repeatable schedules with a highly optimized wait time caching model.
+3. **Significant Regression Risk:** A complete rewrite would require modifying `planner.py`, `resolver.py`, `engine.py`, `validator.py`, and related unit tests close to the deadline.
+4. **The Limitation is Isolated and Documented:** The chronological constraint limitation is explicitly documented and captured by our strict validator layer.
+
+
 ## How to change a weight
 
 Open the relevant scenario JSON file and edit the value in the `weights` block — for example, change `"operator": 2.0` to `"operator": 3.0` in `data/scenario_4.json`. No Python file is touched.

@@ -2,74 +2,15 @@ import glob
 import json
 import os
 import streamlit as st
+import copy
+import time
 
 from scheduler.engine import run
 from scheduler.loader import load_scenario
-from scheduler.models import Direction, Scenario, ScenarioSchedule
+from scheduler.models import Scenario
 
-
-# ── required helper functions ─────────────────────────────────────────────────
-
-def _minutes_to_hhmm(minutes: int) -> str:
-    hours, mins = divmod(minutes, 60)
-    return f"{hours:02d}:{mins:02d}"
-
-
-def _direction_label(direction: Direction) -> str:
-    if direction == Direction.BENGALURU_TO_KOCHI:
-        return "Bengaluru → Kochi"
-    return "Kochi → Bengaluru"
-
-
-def _build_bus_table(scenario: Scenario, schedule: ScenarioSchedule) -> list[dict]:
-    bus_map = {bus.id: bus for bus in scenario.buses}
-    rows = []
-    for bs in sorted(schedule.bus_schedules, key=lambda x: x.arrival_time_minutes):
-        bus = bus_map[bs.bus_id]
-        for i, stop in enumerate(bs.charging_stops):
-            is_last = i == len(bs.charging_stops) - 1
-            rows.append({
-                "Bus ID": bs.bus_id,
-                "Operator": bus.operator.name,
-                "Direction": _direction_label(bus.direction),
-                "Stop #": i + 1,
-                "Station": stop.station_id,
-                "Arrives": _minutes_to_hhmm(stop.arrival_time_minutes),
-                "Charge Start": _minutes_to_hhmm(stop.charge_start_minutes),
-                "Charge End": _minutes_to_hhmm(stop.charge_end_minutes),
-                "Wait (min)": stop.wait_minutes,
-                "Arrival at Dest": _minutes_to_hhmm(bs.arrival_time_minutes) if is_last else "",
-            })
-    return rows
-
-
-def _build_station_table(
-    station_id: str,
-    schedule: ScenarioSchedule,
-    scenario: Scenario,
-) -> list[dict]:
-    bus_map = {bus.id: bus for bus in scenario.buses}
-    station_stops = sorted(
-        [
-            (bs.bus_id, stop)
-            for bs in schedule.bus_schedules
-            for stop in bs.charging_stops
-            if stop.station_id == station_id
-        ],
-        key=lambda x: x[1].charge_start_minutes,
-    )
-    return [
-        {
-            "Order": i + 1,
-            "Bus ID": bus_id,
-            "Operator": bus_map[bus_id].operator.name,
-            "Arrives": _minutes_to_hhmm(stop.arrival_time_minutes),
-            "Charge Start": _minutes_to_hhmm(stop.charge_start_minutes),
-            "Charge End": _minutes_to_hhmm(stop.charge_end_minutes),
-            "Wait (min)": stop.wait_minutes,
-        }
-        for i, (bus_id, stop) in enumerate(station_stops)
-    ]
+from ui.styles import inject_styles
+from ui.dashboard import render_dashboard
 
 
 # ── data loading ──────────────────────────────────────────────────────────────
@@ -85,72 +26,79 @@ def _load_scenario_index(data_dir: str) -> list[dict[str, str]]:
 
 
 @st.cache_data
-def _load_and_run(filepath: str) -> tuple[Scenario, ScenarioSchedule]:
-    scenario = load_scenario(filepath)
-    return scenario, run(scenario)
+def _load_scenario(filepath: str) -> Scenario:
+    return load_scenario(filepath)
 
 
-# ── render helpers ────────────────────────────────────────────────────────────
+# ── sidebar helpers ───────────────────────────────────────────────────────────
 
-def _render_input_view(scenario: Scenario) -> None:
-    st.header("Scenario Input")
-    bus_rows = [
-        {
-            "Bus ID": bus.id,
-            "Operator": bus.operator.name,
-            "Direction": _direction_label(bus.direction),
-            "Departure": _minutes_to_hhmm(bus.departure_time_minutes),
-        }
-        for bus in scenario.buses
-    ]
-    st.dataframe(bus_rows, use_container_width=True)
-    weights = {
-        "individual": scenario.weights.individual,
-        "operator": scenario.weights.operator,
-        "overall": scenario.weights.overall,
-        **scenario.weights.extra,
-    }
-    st.markdown("**Weights in use:**")
-    st.json(weights)
+def _get_selected_filepath() -> str:
+    st.sidebar.title("RouteCharge Control Panel")
+    scenarios = _load_scenario_index("data")
+    options = {s["name"]: s["filepath"] for s in scenarios}
+    selected = st.sidebar.selectbox("Select a scenario", list(options.keys()))
+    return options[selected]
 
 
-def _render_per_bus_view(scenario: Scenario, schedule: ScenarioSchedule) -> None:
-    st.header("Per-Bus Timetable")
-    st.dataframe(_build_bus_table(scenario, schedule), use_container_width=True)
+def _get_slider_values(scenario: Scenario, filepath: str) -> tuple[float, float, float]:
+    st.sidebar.markdown("---")
+    st.sidebar.header("⚖️ Tune Soft Rule Weights")
 
+    default_ind = scenario.weights.values.get("IndividualWaitRule", 1.0)
+    default_op = scenario.weights.values.get("OperatorFairnessRule", 1.0)
+    default_net = scenario.weights.values.get("OverallNetworkRule", 1.0)
 
-def _render_per_station_view(scenario: Scenario, schedule: ScenarioSchedule) -> None:
-    st.header("Per-Station Charging Order")
-    station_ids = {station.id for station in scenario.stations}
-    ordered = [rs.station_id for rs in scenario.route.stops if rs.station_id in station_ids]
-    for station_id in ordered:
-        st.subheader(f"Station {station_id}")
-        rows = _build_station_table(station_id, schedule, scenario)
-        if rows:
-            st.dataframe(rows, use_container_width=True)
-        else:
-            st.write("No buses charged at this station.")
+    slider_ind = st.sidebar.slider(
+        "Individual Wait Rule", 0.0, 10.0, float(default_ind), 0.1,
+        key=f"slider_ind_{filepath}", help="Higher values penalize long individual wait times."
+    )
+    slider_op = st.sidebar.slider(
+        "Operator Fairness Rule", 0.0, 10.0, float(default_op), 0.1,
+        key=f"slider_op_{filepath}", help="Higher values penalize fleet wait disparity."
+    )
+    slider_net = st.sidebar.slider(
+        "Overall Network Rule", 0.0, 10.0, float(default_net), 0.1,
+        key=f"slider_net_{filepath}", help="Higher values penalize destination delays."
+    )
+    return slider_ind, slider_op, slider_net
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
-    st.title("RouteCharge — Bus Charging Scheduler")
+    st.set_page_config(page_title="RouteCharge — Bus Charging Scheduler", layout="wide")
 
-    scenarios = _load_scenario_index("data")
-    options = {s["name"]: s["filepath"] for s in scenarios}
-    selected = st.selectbox("Select a scenario", list(options.keys()))
-    filepath = options[selected]
-
+    filepath = _get_selected_filepath()
     try:
-        scenario, schedule = _load_and_run(filepath)
+        scenario = _load_scenario(filepath)
     except ValueError as e:
-        st.error(str(e))
+        st.sidebar.error(f"Failed to load scenario: {e}")
         return
 
-    _render_input_view(scenario)
-    _render_per_bus_view(scenario, schedule)
-    _render_per_station_view(scenario, schedule)
+    slider_ind, slider_op, slider_net = _get_slider_values(scenario, filepath)
+
+    # ── Scheduler Execution on copied scenario ──────────────────────────────────
+    scenario_copy = copy.deepcopy(scenario)
+    scenario_copy.weights.values["IndividualWaitRule"] = slider_ind
+    scenario_copy.weights.values["OperatorFairnessRule"] = slider_op
+    scenario_copy.weights.values["OverallNetworkRule"] = slider_net
+
+    start_time = time.perf_counter()
+    try:
+        schedule = run(scenario_copy)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+    except ValueError as e:
+        st.error(f"⚠️ **Scheduler Execution Error:** {e}")
+        return
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"⏱️ **Solver Speed:** `{elapsed_ms:.2f} ms`")
+
+    st.title("RouteCharge — Bus Charging Scheduler")
+    inject_styles()
+
+    render_dashboard(scenario_copy, schedule, slider_ind, slider_op, slider_net)
 
 
-main()
+if __name__ == "__main__":
+    main()
