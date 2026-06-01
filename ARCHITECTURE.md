@@ -21,7 +21,7 @@ All times are integers (minutes since midnight). This eliminates format parsing 
 | Change | How the design handles it |
 |---|---|
 | Add a new station to the route | Edit scenario JSON: add stop to `route.stops`, add entry to `stations` list |
-| Add a second charger at a station | Edit scenario JSON: set `num_chargers` to 2; update resolver to use the field — isolated to `resolver.py` |
+| Add a second charger at a station | Edit scenario JSON: set `num_chargers` to 2; update `resolver.py` to track multiple concurrent slots per station, and update `validator.py` to allow overlapping intervals up to `num_chargers` — both isolated changes |
 | Change a segment distance | Edit scenario JSON: change `distance_from_previous_km` on the relevant stop |
 | Add a new operator | Edit scenario JSON: use the new operator name string on any bus entry |
 | Add a new bus | Edit scenario JSON: add a bus entry with id, operator, direction, departure time |
@@ -30,12 +30,20 @@ All times are integers (minutes since midnight). This eliminates format parsing 
 | Change any weight | Edit one value in the scenario JSON `weights` block |
 | Add a priority flag to buses | Add `priority` field to bus entries in JSON; add a new soft or hard rule that reads it — no engine changes |
 | Add a new route (second corridor) | New scenario JSON file with different `route.stops` and `stations` |
-| Multiple routes sharing a station | Station id is the unique key; resolver handles contention by station id regardless of route |
-| Driver shift constraints | Add `shift_end_minutes` to bus entries in JSON; enforce in `validator.py` as a new hard constraint |
-| Time-of-day electricity costs | Add cost schedule to `physical_constants` in JSON; implement as a new `SoftRule` — one file, one JSON key, zero engine changes |
+| Multiple routes sharing a station | Merge buses from both routes into a single scenario file with a shared `stations` list. Each `engine.run()` is self-contained — cross-route contention only resolves if both routes' buses are in the same scenario |
+| Time-of-day electricity costs | Add `extra: Dict` field to `PhysicalConstants` (same pattern as `Weights.extra`) and update `_parse_physical_constants` in `loader.py` to collect unknown keys. Then implement as a new `SoftRule` reading from `scenario.physical_constants.extra` |
 | Variable charge speed (fast vs standard charger) | Add `charger_type` to station entries and a fast charge time constant to `physical_constants`; planner and resolver read from scenario |
 | Minimum headway between buses at a station | Add `min_headway_minutes` to `physical_constants` in JSON; enforce in `validator.py` as a new hard constraint |
 | Bus depot release time (available only from a certain hour) | Add `available_from_minutes` to bus entries in JSON; validator enforces it, no planner changes needed |
+| Bus does not start with full charge | Add `initial_charge_km` to bus entries in JSON; update `planner.py::_greedy_select` to use this as starting range instead of assuming `battery_range_km` |
+| Station temporarily out of service | Add `available: bool` to station entries in JSON; `planner.py::_valid_station_ids` filters by this field — data-only change |
+| Driver shift constraints | Add `shift_end_minutes` to bus entries in JSON; enforce in `validator.py` as a hard constraint AND add a `ShiftUrgencyRule` soft rule — post-hoc validation alone cannot recover a committed schedule that violates a deadline |
+
+**Known limitations:**
+
+The `Direction` enum currently encodes Bengaluru–Kochi route semantics directly. Adding a second route would require replacing it with a route-agnostic concept such as `is_forward: bool` on `Bus` — the one change with multi-file blast radius touching models, loader, planner, utils, and validator.
+
+The `extra: Dict` extensibility pattern applied to `Weights` is not yet applied to `Bus`, `Station`, or `PhysicalConstants`. Adding a new field to those models currently requires changes to both `models.py` and `loader.py`. This inconsistency is the next thing to address.
 
 ## How to change a weight
 
