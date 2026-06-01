@@ -85,6 +85,14 @@ class ScenarioSchedule:
 
 
 @dataclass
+class ChargingCandidate:
+    bus_id: str
+    station_id: str
+    charge_start_minutes: int
+    scheduled_so_far: List[BusSchedule]
+
+
+@dataclass
 class Scenario:
     id: str
     name: str

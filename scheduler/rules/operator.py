@@ -1,8 +1,8 @@
 from typing import Dict, List, Optional
 
-from scheduler.models import BusSchedule, Scenario
-from scheduler.rules.base import ChargingCandidate, SoftRule
-from scheduler.rules.individual import _expected_arrival
+from scheduler.models import BusSchedule, ChargingCandidate, Scenario
+from scheduler.rules.base import SoftRule
+from scheduler.utils import expected_arrival
 
 
 def _get_operator_name(scenario: Scenario, bus_id: str) -> str:
@@ -31,6 +31,6 @@ class OperatorFairnessRule(SoftRule):
         avg_wait = _avg_operator_wait(scenario, candidate.scheduled_so_far, op_name)
         if avg_wait is None:
             return 0.0
-        arrival = _expected_arrival(scenario, candidate)
+        arrival = expected_arrival(scenario, candidate)
         candidate_wait = float(max(0, candidate.charge_start_minutes - arrival))
         return float(max(0.0, candidate_wait - avg_wait))

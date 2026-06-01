@@ -1,26 +1,16 @@
 from typing import List, Set, Tuple
 
 from scheduler.models import Bus, Direction, Route, Scenario, Station
+from scheduler.utils import cumulative_km_to
 
 
 def _ordered_stops(route: Route, direction: Direction) -> List[Tuple[str, float]]:
-    """Build (station_id, cumulative_km_from_origin) for each stop in travel order."""
-    if direction == Direction.BENGALURU_TO_KOCHI:
-        ordered = route.stops
-        # Each stop's distance_from_previous_km is the segment leading into it.
-        segment_dists = [s.distance_from_previous_km for s in ordered[1:]]
-    else:
-        ordered = list(reversed(route.stops))
-        # In reverse traversal, the segment from ordered[i] to ordered[i+1]
-        # equals the original distance_from_previous_km of ordered[i] (the "leaving" stop).
-        segment_dists = [s.distance_from_previous_km for s in ordered[:-1]]
-
-    result: List[Tuple[str, float]] = [(ordered[0].station_id, 0.0)]
-    cumulative = 0.0
-    for station_id, dist in zip((s.station_id for s in ordered[1:]), segment_dists):
-        cumulative += dist
-        result.append((station_id, cumulative))
-    return result
+    origin = route.stops[0] if direction == Direction.BENGALURU_TO_KOCHI else route.stops[-1]
+    non_origin = [s for s in route.stops if s.station_id != origin.station_id]
+    pairs: List[Tuple[str, float]] = [(origin.station_id, 0.0)] + [
+        (s.station_id, cumulative_km_to(route, direction, s.station_id)) for s in non_origin
+    ]
+    return sorted(pairs, key=lambda x: x[1])
 
 
 def _valid_station_ids(stations: List[Station]) -> Set[str]:

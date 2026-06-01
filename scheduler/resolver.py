@@ -1,8 +1,8 @@
 from typing import List, Tuple
 
-from scheduler.models import BusSchedule, ChargingStop, Scenario
-from scheduler.rules.base import ChargingCandidate, SoftRule
-from scheduler.rules.individual import _expected_arrival
+from scheduler.models import BusSchedule, ChargingCandidate, ChargingStop, Scenario
+from scheduler.rules.base import SoftRule
+from scheduler.utils import expected_arrival
 from scheduler.scorer import compute_score
 
 
@@ -12,14 +12,14 @@ def _arrival_at(
     station_id: str,
     scheduled_so_far: List[BusSchedule],
 ) -> int:
-    # charge_start_minutes is not read by _expected_arrival; 0 is a safe placeholder.
+    # charge_start_minutes is not read by expected_arrival; 0 is a safe placeholder.
     temp = ChargingCandidate(
         bus_id=bus_id,
         station_id=station_id,
         charge_start_minutes=0,
         scheduled_so_far=scheduled_so_far,
     )
-    return _expected_arrival(scenario, temp)
+    return expected_arrival(scenario, temp)
 
 
 def _select_next(
@@ -62,11 +62,11 @@ def resolve_station(
     bus_ids: List[str],
     rules: List[SoftRule],
     scheduled_so_far: List[BusSchedule],
-) -> List[ChargingStop]:
+) -> List[Tuple[str, ChargingStop]]:
     remaining = list(bus_ids)
     charger_free_at = 0
     context = list(scheduled_so_far)
-    result: List[ChargingStop] = []
+    result: List[Tuple[str, ChargingStop]] = []
 
     while remaining:
         bus_id = _select_next(scenario, station_id, remaining, charger_free_at, rules, context)
@@ -79,7 +79,7 @@ def resolve_station(
             charge_start_minutes=charge_start,
             charge_end_minutes=charge_end,
         )
-        result.append(stop)
+        result.append((bus_id, stop))
         context = _update_context(context, bus_id, stop)
         charger_free_at = charge_end
         remaining.remove(bus_id)

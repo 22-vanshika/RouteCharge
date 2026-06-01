@@ -1,7 +1,7 @@
 from typing import Dict, List
 
-from scheduler.models import Scenario, Weights
-from scheduler.rules.base import ChargingCandidate, SoftRule
+from scheduler.models import ChargingCandidate, Scenario, Weights
+from scheduler.rules.base import SoftRule
 
 
 def _build_weight_map(weights: Weights) -> Dict[str, float]:
