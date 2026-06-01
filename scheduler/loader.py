@@ -30,14 +30,25 @@ def _parse_physical_constants(data: dict) -> PhysicalConstants:
 
 def _parse_weights(data: dict) -> Weights:
     ctx = "weights"
-    known = {"individual", "operator", "overall"}
-    extra = {k: float(v) for k, v in data.items() if k not in known}
-    return Weights(
-        individual=float(_require(data, "individual", ctx)),
-        operator=float(_require(data, "operator", ctx)),
-        overall=float(_require(data, "overall", ctx)),
-        extra=extra,
-    )
+    legacy_mapping = {
+        "individual": "IndividualWaitRule",
+        "operator": "OperatorFairnessRule",
+        "overall": "OverallNetworkRule",
+    }
+    values = {}
+    for k, v in data.items():
+        mapped_key = legacy_mapping.get(k, k)
+        values[mapped_key] = float(v)
+
+    if "individual" not in data and "IndividualWaitRule" not in values:
+        raise ValueError(f"Missing required field 'individual' in {ctx}")
+    if "operator" not in data and "OperatorFairnessRule" not in values:
+        raise ValueError(f"Missing required field 'operator' in {ctx}")
+    if "overall" not in data and "OverallNetworkRule" not in values:
+        raise ValueError(f"Missing required field 'overall' in {ctx}")
+
+    return Weights(values=values)
+
 
 
 def _parse_route_stop(data: dict, index: int) -> RouteStop:

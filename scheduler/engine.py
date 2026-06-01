@@ -73,8 +73,29 @@ def _build_partial_context(
     ]
 
 
+def _precompute_scenario_indexes(scenario: Scenario) -> None:
+    from scheduler.models import Direction
+    scenario._bus_by_id = {b.id: b for b in scenario.buses}
+    scenario._op_by_bus = {b.id: b.operator.name for b in scenario.buses}
+    scenario._station_distances = {}
+    for direction in Direction:
+        if direction == Direction.BENGALURU_TO_KOCHI:
+            ordered = scenario.route.stops
+            segment_dists = [s.distance_from_previous_km for s in ordered[1:]]
+        else:
+            ordered = list(reversed(scenario.route.stops))
+            segment_dists = [s.distance_from_previous_km for s in ordered[:-1]]
+
+        cumulative = 0.0
+        scenario._station_distances[(direction, ordered[0].station_id)] = 0.0
+        for stop, dist in zip(ordered[1:], segment_dists):
+            cumulative += dist
+            scenario._station_distances[(direction, stop.station_id)] = cumulative
+
+
 def run(scenario: Scenario) -> ScenarioSchedule:
     validate_scenario(scenario)
+    _precompute_scenario_indexes(scenario)
     rules: List[SoftRule] = list(DEFAULT_RULES)
 
     bus_plans: Dict[str, List[str]] = {
@@ -82,6 +103,7 @@ def run(scenario: Scenario) -> ScenarioSchedule:
     }
     station_groups = _station_bus_groups(bus_plans)
     processing_order = _station_processing_order(scenario, bus_plans)
+
 
     scheduled_so_far: List[BusSchedule] = []
     bus_stop_map: Dict[str, List[ChargingStop]] = {bus.id: [] for bus in scenario.buses}

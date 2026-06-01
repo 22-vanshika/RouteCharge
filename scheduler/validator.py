@@ -175,22 +175,41 @@ def _check_station_order(scenario: Scenario, schedule: ScenarioSchedule) -> None
                 )
 
 
-def _check_no_charger_overlap(schedule: ScenarioSchedule) -> None:
+def _check_no_charger_overlap(scenario: Scenario, schedule: ScenarioSchedule) -> None:
+    # Build a lookup for station num_chargers to support concurrent charging
+    charger_limits = {station.id: max(1, station.num_chargers) for station in scenario.stations}
+
     intervals: Dict[str, List[Tuple[int, int, str]]] = {}
     for bs in schedule.bus_schedules:
         for stop in bs.charging_stops:
             intervals.setdefault(stop.station_id, []).append(
                 (stop.charge_start_minutes, stop.charge_end_minutes, bs.bus_id)
             )
+
     for station_id, slots in intervals.items():
-        slots.sort(key=lambda x: x[0])
-        for i in range(len(slots) - 1):
-            if slots[i][1] > slots[i + 1][0]:
-                raise ValueError(
-                    f"Station '{station_id}': charger overlap — "
-                    f"bus '{slots[i][2]}' charges until {slots[i][1]} min, "
-                    f"bus '{slots[i + 1][2]}' starts at {slots[i + 1][0]} min"
-                )
+        limit = charger_limits.get(station_id, 1)
+        # Create events: (time, event_type, bus_id)
+        # We sort end (-1) before start (+1) at the same minute to allow seamless charger handovers
+        events: List[Tuple[int, int, str]] = []
+        for start, end, bus_id in slots:
+            events.append((start, 1, bus_id))
+            events.append((end, -1, bus_id))
+
+        events.sort(key=lambda x: (x[0], x[1]))
+
+        active_buses = set()
+        for time, ev_type, bus_id in events:
+            if ev_type == 1:
+                active_buses.add(bus_id)
+                if len(active_buses) > limit:
+                    raise ValueError(
+                        f"Station '{station_id}': charger overlap — "
+                        f"number of concurrent buses charging ({len(active_buses)}) "
+                        f"exceeds limit ({limit}) at minute {time}. "
+                        f"Buses involved: {sorted(active_buses)}"
+                    )
+            else:
+                active_buses.discard(bus_id)
 
 
 def validate_schedule(scenario: Scenario, schedule: ScenarioSchedule) -> None:
@@ -198,4 +217,5 @@ def validate_schedule(scenario: Scenario, schedule: ScenarioSchedule) -> None:
     _check_charge_durations(schedule, scenario.physical_constants.charge_time_minutes)
     _check_station_order(scenario, schedule)
     _check_range_rule(scenario, schedule)
-    _check_no_charger_overlap(schedule)
+    _check_no_charger_overlap(scenario, schedule)
+

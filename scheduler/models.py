@@ -44,11 +44,25 @@ class PhysicalConstants:
 
 @dataclass
 class Weights:
-    individual: float
-    operator: float
-    overall: float
-    # Future weights are added here without a code change — engine reads by key
-    extra: Dict[str, float] = field(default_factory=dict)
+    values: Dict[str, float] = field(default_factory=dict)
+
+    @property
+    def individual(self) -> float:
+        return self.values.get("IndividualWaitRule", 1.0)
+
+    @property
+    def operator(self) -> float:
+        return self.values.get("OperatorFairnessRule", 1.0)
+
+    @property
+    def overall(self) -> float:
+        return self.values.get("OverallNetworkRule", 1.0)
+
+    @property
+    def extra(self) -> Dict[str, float]:
+        builtins = {"IndividualWaitRule", "OperatorFairnessRule", "OverallNetworkRule"}
+        return {k: v for k, v in self.values.items() if k not in builtins}
+
 
 
 @dataclass

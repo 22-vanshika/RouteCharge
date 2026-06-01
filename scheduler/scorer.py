@@ -1,16 +1,7 @@
-from typing import Dict, List
+from typing import List
 
 from scheduler.models import ChargingCandidate, Scenario, Weights
 from scheduler.rules.base import SoftRule
-
-
-def _build_weight_map(weights: Weights) -> Dict[str, float]:
-    return {
-        "IndividualWaitRule": weights.individual,
-        "OperatorFairnessRule": weights.operator,
-        "OverallNetworkRule": weights.overall,
-        **weights.extra,
-    }
 
 
 def compute_score(
@@ -19,11 +10,11 @@ def compute_score(
     rules: List[SoftRule],
     weights: Weights,
 ) -> float:
-    weight_map = _build_weight_map(weights)
     total = 0.0
     for rule in rules:
         # Default weight of 1.0 ensures a newly registered rule is always counted
         # rather than silently ignored while its weight key is being added to the scenario.
-        weight = weight_map.get(rule.name, 1.0)
+        weight = weights.values.get(rule.name, 1.0)
         total += rule.score(scenario, candidate) * weight
     return total
+
