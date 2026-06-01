@@ -10,6 +10,7 @@ class SoftRule(ABC):
     name: ClassVar[str]  # stable semantic identifier, independent of class name
 
     @abstractmethod
-    def score(self, scenario: Scenario, candidate: ChargingCandidate) -> float:
+    def score(self, scenario: Scenario, candidate: ChargingCandidate, context = None) -> float:
         """Return a non-negative penalty for this candidate slot. Return 0.0 for no penalty."""
         ...
+

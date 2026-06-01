@@ -23,12 +23,12 @@ def _avg_operator_wait(
 class OperatorFairnessRule(SoftRule):
     name = "OperatorFairnessRule"
 
-    def score(self, scenario: Scenario, candidate: ChargingCandidate) -> float:
-        # Performance Optimization: Use precomputed indices and averages if available on scenario
-        if hasattr(scenario, "_avg_op_waits") and hasattr(scenario, "_op_by_bus"):
-            op_by_bus = scenario._op_by_bus
+    def score(self, scenario: Scenario, candidate: ChargingCandidate, context = None) -> float:
+        # Performance Optimization: Use precomputed context indices and averages if available
+        if context and hasattr(context, "avg_op_waits") and hasattr(context, "op_by_bus"):
+            op_by_bus = context.op_by_bus
             op_name = op_by_bus.get(candidate.bus_id)
-            avg_wait = scenario._avg_op_waits.get(op_name) if op_name else None
+            avg_wait = context.avg_op_waits.get(op_name) if op_name else None
         else:
             op_by_bus = {b.id: b.operator.name for b in scenario.buses}
             op_name = op_by_bus[candidate.bus_id]
@@ -36,7 +36,9 @@ class OperatorFairnessRule(SoftRule):
 
         if avg_wait is None:
             return 0.0
-        arrival = expected_arrival(scenario, candidate)
+        arrival = expected_arrival(scenario, candidate, context)
         candidate_wait = float(max(0, candidate.charge_start_minutes - arrival))
         return float(max(0.0, candidate_wait - avg_wait))
+
+
 

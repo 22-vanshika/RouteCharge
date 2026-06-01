@@ -38,8 +38,8 @@ def _station_processing_order(
     return result
 
 
-def _final_arrival_time(scenario: Scenario, bus: Bus, last_stop: ChargingStop) -> int:
-    last_km = cumulative_km_to(scenario.route, bus.direction, last_stop.station_id)
+def _final_arrival_time(scenario: Scenario, bus: Bus, last_stop: ChargingStop, context = None) -> int:
+    last_km = cumulative_km_to(scenario.route, bus.direction, last_stop.station_id, context)
     remaining_km = scenario.route.total_distance_km - last_km
     return last_stop.charge_end_minutes + travel_minutes(remaining_km, scenario.physical_constants.speed_kmh)
 
@@ -73,11 +73,11 @@ def _build_partial_context(
     ]
 
 
-def _precompute_scenario_indexes(scenario: Scenario) -> None:
-    from scheduler.models import Direction
-    scenario._bus_by_id = {b.id: b for b in scenario.buses}
-    scenario._op_by_bus = {b.id: b.operator.name for b in scenario.buses}
-    scenario._station_distances = {}
+def _build_scheduling_context(scenario: Scenario) -> 'SchedulingContext':
+    from scheduler.models import Direction, SchedulingContext
+    bus_by_id = {b.id: b for b in scenario.buses}
+    op_by_bus = {b.id: b.operator.name for b in scenario.buses}
+    station_distances = {}
     for direction in Direction:
         if direction == Direction.BENGALURU_TO_KOCHI:
             ordered = scenario.route.stops
@@ -87,40 +87,46 @@ def _precompute_scenario_indexes(scenario: Scenario) -> None:
             segment_dists = [s.distance_from_previous_km for s in ordered[:-1]]
 
         cumulative = 0.0
-        scenario._station_distances[(direction, ordered[0].station_id)] = 0.0
+        station_distances[(direction, ordered[0].station_id)] = 0.0
         for stop, dist in zip(ordered[1:], segment_dists):
             cumulative += dist
-            scenario._station_distances[(direction, stop.station_id)] = cumulative
+            station_distances[(direction, stop.station_id)] = cumulative
+            
+    return SchedulingContext(
+        bus_by_id=bus_by_id,
+        op_by_bus=op_by_bus,
+        station_distances=station_distances
+    )
 
 
 def run(scenario: Scenario) -> ScenarioSchedule:
     validate_scenario(scenario)
-    _precompute_scenario_indexes(scenario)
+    context = _build_scheduling_context(scenario)
     rules: List[SoftRule] = list(DEFAULT_RULES)
 
     bus_plans: Dict[str, List[str]] = {
-        bus.id: plan_charging_stops(scenario, bus) for bus in scenario.buses
+        bus.id: plan_charging_stops(scenario, bus, context) for bus in scenario.buses
     }
     station_groups = _station_bus_groups(bus_plans)
     processing_order = _station_processing_order(scenario, bus_plans)
-
 
     scheduled_so_far: List[BusSchedule] = []
     bus_stop_map: Dict[str, List[ChargingStop]] = {bus.id: [] for bus in scenario.buses}
 
     for station_id in processing_order:
         pairs = resolve_station(
-            scenario, station_id, station_groups[station_id], rules, scheduled_so_far
+            scenario, station_id, station_groups[station_id], rules, scheduled_so_far, context
         )
         for bus_id, stop in pairs:
             bus_stop_map[bus_id].append(stop)
         scheduled_so_far = _build_partial_context(scenario.buses, bus_stop_map)
 
     final_arrivals: Dict[str, int] = {
-        bus.id: _final_arrival_time(scenario, bus, bus_stop_map[bus.id][-1])
+        bus.id: _final_arrival_time(scenario, bus, bus_stop_map[bus.id][-1], context)
         for bus in scenario.buses
     }
     bus_schedules = _assemble_bus_schedules(scenario, bus_stop_map, final_arrivals)
     schedule = ScenarioSchedule(scenario_id=scenario.id, bus_schedules=bus_schedules)
     validate_schedule(scenario, schedule)
     return schedule
+

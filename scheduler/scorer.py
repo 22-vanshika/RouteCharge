@@ -9,12 +9,14 @@ def compute_score(
     candidate: ChargingCandidate,
     rules: List[SoftRule],
     weights: Weights,
+    context = None,
 ) -> float:
     total = 0.0
     for rule in rules:
-        # Default weight of 1.0 ensures a newly registered rule is always counted
-        # rather than silently ignored while its weight key is being added to the scenario.
-        weight = weights.values.get(rule.name, 1.0)
-        total += rule.score(scenario, candidate) * weight
+        # Strict weight resolution: weights are guaranteed by the loader to contain all registered rules
+        weight = weights.values[rule.name]
+        total += rule.score(scenario, candidate, context) * weight
     return total
+
+
 

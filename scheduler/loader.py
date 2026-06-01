@@ -35,19 +35,35 @@ def _parse_weights(data: dict) -> Weights:
         "operator": "OperatorFairnessRule",
         "overall": "OverallNetworkRule",
     }
+    
+    # Proactive Failure Detection: Dynamically validate weight keys against registered rules
+    from scheduler.rules import DEFAULT_RULES
+    valid_rule_names = {rule.name for rule in DEFAULT_RULES}
+    valid_keys = {"individual", "operator", "overall"}.union(valid_rule_names)
+
+    for key in data:
+        if key not in valid_keys:
+            raise ValueError(
+                f"Unrecognized weight key '{key}' in scenario weights configuration (possible typo). "
+                f"Valid keys are: {sorted(list(valid_keys))}"
+            )
+
     values = {}
     for k, v in data.items():
         mapped_key = legacy_mapping.get(k, k)
         values[mapped_key] = float(v)
 
-    if "individual" not in data and "IndividualWaitRule" not in values:
-        raise ValueError(f"Missing required field 'individual' in {ctx}")
-    if "operator" not in data and "OperatorFairnessRule" not in values:
-        raise ValueError(f"Missing required field 'operator' in {ctx}")
-    if "overall" not in data and "OverallNetworkRule" not in values:
-        raise ValueError(f"Missing required field 'overall' in {ctx}")
+    # Secure Validation: Every registered rule must have an explicit weight defined in scenario JSON.
+    # This prevents runtime KeyErrors or silent fallbacks.
+    for name in valid_rule_names:
+        if name not in values:
+            raise ValueError(
+                f"Missing required weight key for registered rule '{name}' in weights configuration."
+            )
 
     return Weights(values=values)
+
+
 
 
 

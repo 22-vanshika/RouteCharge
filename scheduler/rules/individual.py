@@ -6,7 +6,8 @@ from scheduler.rules.base import SoftRule
 class IndividualWaitRule(SoftRule):
     name = "IndividualWaitRule"
 
-    def score(self, scenario: Scenario, candidate: ChargingCandidate) -> float:
-        arrival = expected_arrival(scenario, candidate)
+    def score(self, scenario: Scenario, candidate: ChargingCandidate, context = None) -> float:
+        arrival = expected_arrival(scenario, candidate, context)
         wait = candidate.charge_start_minutes - arrival
         return float(max(0, wait))
+
