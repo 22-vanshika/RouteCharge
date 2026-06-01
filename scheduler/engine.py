@@ -33,8 +33,12 @@ def _station_processing_order(
         for depth, station_id in enumerate(plan):
             depth_map.setdefault(depth, set()).add(station_id)
     result: List[str] = []
+    seen = set()
     for depth in sorted(depth_map):
-        result.extend(sorted(depth_map[depth], key=lambda sid: route_pos.get(sid, 0)))
+        for sid in sorted(depth_map[depth], key=lambda sid: route_pos.get(sid, 0)):
+            if sid not in seen:
+                seen.add(sid)
+                result.append(sid)
     return result
 
 
@@ -118,6 +122,11 @@ def run(scenario: Scenario) -> ScenarioSchedule:
         )
         for bus_id, stop in pairs:
             bus_stop_map[bus_id].append(stop)
+            # Charging stops are accumulated in global station-resolution order.
+            # In bidirectional scenarios this may differ from a bus's actual
+            # travel chronology. Normalize each bus schedule into chronological
+            # order before validation and final schedule assembly.
+            bus_stop_map[bus_id].sort(key=lambda s: s.charge_start_minutes)
         scheduled_so_far = _build_partial_context(scenario.buses, bus_stop_map)
 
     final_arrivals: Dict[str, int] = {

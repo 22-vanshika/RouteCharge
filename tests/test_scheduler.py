@@ -195,5 +195,29 @@ class TestMultiChargerScheduling(unittest.TestCase):
             validate_schedule(scenario, schedule)
         self.assertIn("charger overlap — number of concurrent buses charging (2) exceeds limit (1)", str(context.exception))
 
+class TestSharedStationDepthProcessingBug(unittest.TestCase):
+    def test_shared_station_depth_bug(self):
+        pc = PhysicalConstants(battery_range_km=240.0, speed_kmh=60.0, charge_time_minutes=25)
+        stops = [
+            RouteStop("bengaluru", 0.0),
+            RouteStop("A", 100.0),
+            RouteStop("B", 150.0),
+            RouteStop("kochi", 100.0)
+        ]
+        stations = [
+            Station("A", "Station A", 1),
+            Station("B", "Station B", 1)
+        ]
+        buses = [
+            Bus("bus-BK", Operator("kpn"), Direction.BENGALURU_TO_KOCHI, 0),
+            Bus("bus-KB", Operator("freshbus"), Direction.KOCHI_TO_BENGALURU, 0)
+        ]
+        scenario = Scenario("test_bug", "Test Shared Station Bug", "Test", Route(stops), pc, get_test_weights(), buses, stations)
+        
+        from scheduler.engine import run
+        schedule = run(scenario)
+        self.assertIsNotNone(schedule)
+        self.assertEqual(len(schedule.bus_schedules), 2)
+
 if __name__ == "__main__":
     unittest.main()
