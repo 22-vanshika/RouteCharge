@@ -11,6 +11,7 @@ def _arrival_at(
     bus_id: str,
     station_id: str,
     scheduled_so_far: List[BusSchedule],
+    context = None,
 ) -> int:
     # charge_start_minutes is not read by expected_arrival; 0 is a safe placeholder.
     temp = ChargingCandidate(
@@ -19,7 +20,7 @@ def _arrival_at(
         charge_start_minutes=0,
         scheduled_so_far=scheduled_so_far,
     )
-    return expected_arrival(scenario, temp)
+    return expected_arrival(scenario, temp, context)
 
 
 def _select_next(
@@ -29,10 +30,12 @@ def _select_next(
     charger_free_times: List[int],
     rules: List[SoftRule],
     scheduled_so_far: List[BusSchedule],
+    context = None,
 ) -> str:
+    import dataclasses
     # Performance Optimization: Precompute average wait per operator once from scheduled_so_far.
     # This prevents OperatorFairnessRule from performing O(B*S) scans on every scoring calculation.
-    op_by_bus = scenario._op_by_bus if hasattr(scenario, "_op_by_bus") else {b.id: b.operator.name for b in scenario.buses}
+    op_by_bus = context.op_by_bus if context and hasattr(context, "op_by_bus") else {b.id: b.operator.name for b in scenario.buses}
     op_waits: Dict[str, List[int]] = {}
     for bs in scheduled_so_far:
         op = op_by_bus.get(bs.bus_id)
@@ -40,26 +43,24 @@ def _select_next(
             for stop in bs.charging_stops:
                 op_waits.setdefault(op, []).append(stop.wait_minutes)
                 
-    scenario._avg_op_waits = {
+    avg_op_waits = {
         op: sum(waits) / len(waits) for op, waits in op_waits.items()
     }
+    
+    # Pure Functional Copy: Reconstruct an immutable SchedulingContext with average waits populated
+    step_context = dataclasses.replace(context, avg_op_waits=avg_op_waits) if context else None
 
     def _rank(bus_id: str) -> Tuple[float, int, str]:
-        arrival = _arrival_at(scenario, bus_id, station_id, scheduled_so_far)
+        arrival = _arrival_at(scenario, bus_id, station_id, scheduled_so_far, step_context)
         # Select earliest available charger
         earliest_charger_free = min(charger_free_times)
         charge_start = max(arrival, earliest_charger_free)
         candidate = ChargingCandidate(bus_id, station_id, charge_start, scheduled_so_far)
-        score = compute_score(scenario, candidate, rules, scenario.weights)
+        score = compute_score(scenario, candidate, rules, scenario.weights, step_context)
         return (score, arrival, bus_id)
 
-    res = min(remaining_ids, key=_rank)
+    return min(remaining_ids, key=_rank)
 
-    # Clean up temporary lookup to avoid namespace pollution
-    if hasattr(scenario, "_avg_op_waits"):
-        del scenario._avg_op_waits
-
-    return res
 
 
 def _update_context(
@@ -87,6 +88,7 @@ def resolve_station(
     bus_ids: List[str],
     rules: List[SoftRule],
     scheduled_so_far: List[BusSchedule],
+    context = None,
 ) -> List[Tuple[str, ChargingStop]]:
     # Dynamic Charger Resolution: Lookup actual station count to support concurrent charging
     station = next(s for s in scenario.stations if s.id == station_id)
@@ -94,12 +96,12 @@ def resolve_station(
 
     remaining = list(bus_ids)
     charger_free_times = [0] * num_chargers
-    context = list(scheduled_so_far)
+    partial_schedules = list(scheduled_so_far)
     result: List[Tuple[str, ChargingStop]] = []
 
     while remaining:
-        bus_id = _select_next(scenario, station_id, remaining, charger_free_times, rules, context)
-        arrival = _arrival_at(scenario, bus_id, station_id, context)
+        bus_id = _select_next(scenario, station_id, remaining, charger_free_times, rules, partial_schedules, context)
+        arrival = _arrival_at(scenario, bus_id, station_id, partial_schedules, context)
         
         # Chronological Greedy charger assignment: assign the bus to the charger that becomes free earliest
         earliest_charger_idx = min(range(num_chargers), key=lambda idx: charger_free_times[idx])
@@ -115,7 +117,7 @@ def resolve_station(
             charge_end_minutes=charge_end,
         )
         result.append((bus_id, stop))
-        context = _update_context(context, bus_id, stop)
+        partial_schedules = _update_context(partial_schedules, bus_id, stop)
         
         # Update specific charger's timeline
         charger_free_times[earliest_charger_idx] = charge_end
@@ -124,4 +126,5 @@ def resolve_station(
     # Sort chronological results to ensure presentation order is clean
     result.sort(key=lambda x: x[1].charge_start_minutes)
     return result
+
 

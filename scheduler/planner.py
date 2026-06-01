@@ -5,13 +5,13 @@ from scheduler.models import Bus, Direction, Route, Scenario, Station
 from scheduler.utils import cumulative_km_to
 
 
-def _ordered_stops(route: Route, direction: Direction) -> List[Tuple[str, float]]:
+def _ordered_stops(route: Route, direction: Direction, context = None) -> List[Tuple[str, float]]:
     # Includes endpoint stops — _bfs_select filters to valid charging
     # stations via valid_ids, so non-chargeable endpoints are ignored there.
     origin = route.stops[0] if direction == Direction.BENGALURU_TO_KOCHI else route.stops[-1]
     non_origin = [s for s in route.stops if s.station_id != origin.station_id]
     pairs: List[Tuple[str, float]] = [(origin.station_id, 0.0)] + [
-        (s.station_id, cumulative_km_to(route, direction, s.station_id)) for s in non_origin
+        (s.station_id, cumulative_km_to(route, direction, s.station_id, context)) for s in non_origin
     ]
     return sorted(pairs, key=lambda x: x[1])
 
@@ -55,8 +55,8 @@ def _bfs_select(
     )
 
 
-def plan_charging_stops(scenario: Scenario, bus: Bus) -> List[str]:
-    ordered = _ordered_stops(scenario.route, bus.direction)
+def plan_charging_stops(scenario: Scenario, bus: Bus, context = None) -> List[str]:
+    ordered = _ordered_stops(scenario.route, bus.direction, context)
     valid_ids = _valid_station_ids(scenario.stations)
     return _bfs_select(
         ordered,
@@ -64,4 +64,5 @@ def plan_charging_stops(scenario: Scenario, bus: Bus) -> List[str]:
         scenario.physical_constants.battery_range_km,
         bus.id,
     )
+
 

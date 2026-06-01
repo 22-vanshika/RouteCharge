@@ -42,6 +42,17 @@ def _check_station_chargers(stations: List[Station]) -> None:
 def _check_route(route: Route, stations: List[Station], battery_range_km: float) -> None:
     if len(route.stops) < 2:
         raise ValueError(f"Route has {len(route.stops)} stop(s): must have at least 2")
+
+    # Proactive Integrity Check: Assert all intermediate route stops exist in the stations list
+    registered_ids = {s.id for s in stations}
+    endpoints = {route.stops[0].station_id, route.stops[-1].station_id}
+    for stop in route.stops:
+        if stop.station_id not in endpoints and stop.station_id not in registered_ids:
+            raise ValueError(
+                f"Route stop '{stop.station_id}' is not a registered scheduling station. "
+                f"Registered stations: {sorted(list(registered_ids))}"
+            )
+
     for stop in route.stops:
         if stop.distance_from_previous_km < 0:
             raise ValueError(
@@ -53,6 +64,7 @@ def _check_route(route: Route, stations: List[Station], battery_range_km: float)
             f"Route total {route.total_distance_km} km exceeds battery_range_km={battery_range_km} km "
             f"with no scheduling stations — trip is impossible"
         )
+
 
 
 def _check_duplicate_bus_ids(buses: List[Bus]) -> None:

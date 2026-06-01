@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 
 class Direction(Enum):
@@ -116,3 +116,13 @@ class Scenario:
     weights: Weights
     buses: List[Bus]
     stations: List[Station]
+
+
+@dataclass(frozen=True)
+class SchedulingContext:
+    bus_by_id: Dict[str, Bus]
+    op_by_bus: Dict[str, str]
+    station_distances: Dict[Tuple[Direction, str], float]
+    avg_op_waits: Dict[str, float] = field(default_factory=dict)
+
+
