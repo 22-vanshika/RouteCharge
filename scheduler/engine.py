@@ -1,4 +1,4 @@
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 
 from scheduler.models import Bus, BusSchedule, ChargingStop, Direction, Scenario, ScenarioSchedule, SchedulingContext
 from scheduler.utils import cumulative_km_to, travel_minutes
@@ -42,7 +42,9 @@ def _station_processing_order(
     return result
 
 
-def _final_arrival_time(scenario: Scenario, bus: Bus, last_stop: ChargingStop, context = None) -> int:
+def _final_arrival_time(scenario: Scenario, bus: Bus, last_stop: Optional[ChargingStop], context = None) -> int:
+    if not last_stop:
+        return bus.departure_time_minutes + travel_minutes(scenario.route.total_distance_km, scenario.physical_constants.speed_kmh)
     last_km = cumulative_km_to(scenario.route, bus.direction, last_stop.station_id, context)
     remaining_km = scenario.route.total_distance_km - last_km
     return last_stop.charge_end_minutes + travel_minutes(remaining_km, scenario.physical_constants.speed_kmh)
@@ -130,7 +132,7 @@ def run(scenario: Scenario) -> ScenarioSchedule:
         scheduled_so_far = _build_partial_context(scenario.buses, bus_stop_map)
 
     final_arrivals: Dict[str, int] = {
-        bus.id: _final_arrival_time(scenario, bus, bus_stop_map[bus.id][-1], context)
+        bus.id: _final_arrival_time(scenario, bus, bus_stop_map[bus.id][-1] if bus_stop_map[bus.id] else None, context)
         for bus in scenario.buses
     }
     bus_schedules = _assemble_bus_schedules(scenario, bus_stop_map, final_arrivals)
