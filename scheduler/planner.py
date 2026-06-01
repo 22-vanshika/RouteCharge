@@ -5,6 +5,8 @@ from scheduler.utils import cumulative_km_to
 
 
 def _ordered_stops(route: Route, direction: Direction) -> List[Tuple[str, float]]:
+    # Includes endpoint stops — _greedy_select filters to valid charging
+    # stations via valid_ids, so non-chargeable endpoints are ignored there.
     origin = route.stops[0] if direction == Direction.BENGALURU_TO_KOCHI else route.stops[-1]
     non_origin = [s for s in route.stops if s.station_id != origin.station_id]
     pairs: List[Tuple[str, float]] = [(origin.station_id, 0.0)] + [

@@ -48,6 +48,14 @@ Open the relevant scenario JSON file and edit the value in the `weights` block â
 3. Add the class name as a key in the `weights` block of any scenario JSON where the rule applies (e.g. `"ElectricityCostRule": 0.5`). Scenarios without the key fall back to the default weight of 1.0.
 4. No other files change.
 
+**One known limitation:** the scorer maps rule class names to weights using
+`type(rule).__name__` matched against the string keys in `_build_weight_map`
+(e.g. `"IndividualWaitRule": weights.individual`). If a rule class is renamed,
+the old string key no longer matches and the rule silently falls back to a weight of
+`1.0`. To avoid this: when renaming a rule class, update the
+corresponding string key in `scheduler/scorer.py::_build_weight_map` in the
+same commit.
+
 Example skeleton for a new rule (`scheduler/rules/electricity_cost.py`):
 
 ```python

@@ -23,6 +23,8 @@ def _station_processing_order(
 ) -> List[str]:
     # Process depth-0 stops before depth-1, etc., so each bus's prior stop is always
     # in scheduled_so_far before its next stop is resolved.
+    # Without depth-first order, KB buses would have their second stop (A)
+    # resolved before their first stop (C), producing wrong arrival estimates.
     route_pos: Dict[str, int] = {
         stop.station_id: i for i, stop in enumerate(scenario.route.stops)
     }
@@ -62,6 +64,9 @@ def _build_partial_context(
     bus_stop_map: Dict[str, List[ChargingStop]],
 ) -> List[BusSchedule]:
     return [
+        # arrival_time_minutes=0 is a safe placeholder — only charging_stops is
+        # read from partial schedules during resolution; the real value is written
+        # by the engine after all stations are processed.
         BusSchedule(bus_id=bus.id, charging_stops=bus_stop_map[bus.id], arrival_time_minutes=0)
         for bus in buses
         if bus_stop_map[bus.id]

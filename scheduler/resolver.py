@@ -53,6 +53,9 @@ def _update_context(
             arrival_time_minutes=existing.arrival_time_minutes,
         )
         return [updated if bs.bus_id == bus_id else bs for bs in scheduled_so_far]
+    # arrival_time_minutes=0 is a safe placeholder — only charging_stops is
+    # read from partial schedules during resolution; the real value is written
+    # by the engine after all stations are processed.
     return scheduled_so_far + [BusSchedule(bus_id=bus_id, charging_stops=[new_stop], arrival_time_minutes=0)]
 
 
