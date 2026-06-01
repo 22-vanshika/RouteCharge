@@ -4,6 +4,8 @@ from scheduler.utils import expected_arrival
 
 
 class OverallNetworkRule(SoftRule):
+    name = "OverallNetworkRule"
+
     def score(self, scenario: Scenario, candidate: ChargingCandidate) -> float:
         earliest = expected_arrival(scenario, candidate)
         delay = candidate.charge_start_minutes - earliest
