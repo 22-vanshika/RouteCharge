@@ -1,14 +1,26 @@
 # RouteCharge — Bus Charging Scheduler
 
-RouteCharge schedules charging stops for electric buses on a fixed Bengaluru–Kochi corridor (540 km, four intermediate stations). Given a scenario file describing the fleet, route geometry, and rule weights, the scheduler assigns each bus a concrete charging slot at every required station, resolves charger conflicts, and produces a complete timetable. 
+RouteCharge schedules charging stops for electric buses on a fixed Bengaluru–Kochi corridor (540 km, four intermediate stations). Given a scenario file describing the fleet, route geometry, and rule weights, the scheduler assigns each bus a concrete charging slot at every required station, resolves charger conflicts, and produces a complete timetable.
 
 The approach combines greedy stop selection (utilizing a BFS-based furthest-first path planner) with priority-scored conflict resolution using three tunable soft rules: individual wait time, operator fairness, and overall network delay.
 
 ---
 
+## The Problem
+
+Electric buses run in both directions along a fixed corridor with shared, single-charger stations. Each bus leaves with a full charge but can't complete the trip without recharging along the way — so the scheduler has to decide **which stations each bus uses** and, when several buses want the same charger at once, **who charges first and who waits**.
+
+The interesting part isn't today's fixed setup (4 stations, 1 charger each, 20 buses). It's building a scheduler that stays correct and easy to change as the world grows: more buses, more chargers, new operators, new routes, and new optimization rules. So the design is deliberately **data-driven and rule-pluggable**:
+
+- **Every scenario is self-describing JSON** — route, distances, battery range, charger counts, fleet, and rule weights all live in data, never hardcoded.
+- **Optimization weights are tunable** in one obvious place (the scenario file, or live via UI sliders), balancing three goals: minimizing individual bus waits, keeping each operator's fleet fair, and lowering total network delay.
+- **New rules slot in as a single file** without touching the engine, so the system extends without a rewrite.
+
+---
+
 ## 🌟 Interactive Streamlit UI Features
 
-The application features a modern, staff-level frontend designed specifically to streamline reviewer evaluations:
+The application features a clean, modern frontend for exploring and stress-testing schedules:
 
 1. **Global Control Panel (Left Sidebar)**
    * **Dynamic Scenario Selectbox**: Cycle through the 5 pre-loaded scenarios instantly.
@@ -45,7 +57,7 @@ streamlit run app.py
 
 ## ⚖️ How Weight Tuning Works
 
-Reviewers can tune weights in two ways:
+Weights can be tuned in two ways:
 1. **Interactive UI Sliders (Recommended)**: Drag the sliders in the left-hand sidebar. The scheduler instantly creates a `copy.deepcopy()` of the scenario, applies the slider values, and re-calculates the entire timetable dynamically without mutating cached scenario data.
 2. **Scenario File Defaults**: Open any scenario file in `data/` and edit the `weights` block. Scenario 4 (`data/scenario_4.json`) already uses a doubled operator weight to stress-test fairness:
    ```json
